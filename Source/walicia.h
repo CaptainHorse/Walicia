@@ -15,6 +15,7 @@ public:
 	void Begin() override;
 	void Tick() override;
 	void Update() override;
+	void PreRender() override;
 	void Render() override;
 	void PastRender() override;
 	void Quitting() override;
