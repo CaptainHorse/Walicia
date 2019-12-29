@@ -1,3 +1,4 @@
 [submodule "Submodules/singularity_engine"]
 	path = Submodules/singularity_engine
 	url = git@gitlab.com:CaptainKrisu/singularity_engine.git
+	branch = development
