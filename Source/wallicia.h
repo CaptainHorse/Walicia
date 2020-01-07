@@ -3,13 +3,19 @@
 #include <Common/common.h>
 #include <Common/common_includes.h>
 
-class Walicia : public SE::Application
+class Wallicia : public SE::Application
 {
+private:
+	static SE::graphics::VideoDecoder dec;
+
 public:
-	Walicia(int argc, char** argv, SE::ApplicationParameters parameters)
+	Wallicia(int argc, char** argv, SE::ApplicationParameters parameters)
 		: SE::Application(argc, argv, parameters)
 	{
 	}
+
+	static void VideoOpen(const std::string& path, const bool& sound = true);
+	static void VideoClose();
 
 	void Setup() override;
 	void Begin() override;
@@ -18,5 +24,6 @@ public:
 	void PreRender() override;
 	void Render() override;
 	void PastRender() override;
+	void Present() override;
 	void Quitting() override;
 };

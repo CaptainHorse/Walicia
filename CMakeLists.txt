@@ -1,4 +1,6 @@
 # Basic CMake stuff #
+project(Wallicia)
+
 if (MSVC)
   cmake_minimum_required(VERSION 3.15)
 else()
@@ -11,17 +13,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Singularity Engine Subdirectory #
 add_subdirectory("Submodules/singularity_engine/")
 
-# Walicia #
+# Wallicia #
 set(PROJECT_LINK_LIBS SE_application)
 
 # Executable
-add_executable(Walicia "")
+add_executable(Wallicia "")
 
 # Sources
-target_sources(Walicia
+target_sources(Wallicia
   PRIVATE
-	"Source/walicia.h"
-	"Source/walicia.cpp"
+	"Source/wallicia.h"
+	"Source/wallicia.cpp"
+	"Source/wallicia_control.h"
 
 	"imgui/imconfig.h"
 	"imgui/imgui.h"
@@ -33,24 +36,30 @@ target_sources(Walicia
 	"imgui/imstb_rectpack.h"
 	"imgui/imstb_textedit.h"
 	"imgui/imstb_truetype.h"
+	"imgui/imgui_stdlib.h"
+	"imgui/imgui_stdlib.cpp"
+	"imgui/imfilebrowser.h"
 
 	"imgui/imgui_impl_singularityengine.h"
 	"imgui/imgui_impl_singularityengine.cpp"
 
 	"imgui/imgui_impl_opengl3.h"
 	"imgui/imgui_impl_opengl3.cpp"
+
+	"nlohmann/json.hpp"
 )
 
 # Include folders
-target_include_directories(Walicia 
+target_include_directories(Wallicia 
   PRIVATE
 	"Source/"
 	"imgui/"
+	"nlohmann/"
 	"Submodules/singularity_engine/Source/"
 )
 
 # Libs
-target_link_libraries(Walicia 
+target_link_libraries(Wallicia 
   PRIVATE 
 	${PROJECT_LINK_LIBS} 
 	${CMAKE_DL_LIBS}

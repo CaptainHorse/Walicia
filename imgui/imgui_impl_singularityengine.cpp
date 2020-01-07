@@ -2,7 +2,7 @@
 #include "imgui_impl_singularityengine.h"
 #include "imgui_impl_opengl3.h"
 
-#include <walicia.h>
+#include <wallicia.h>
 
 // Engine integration
 #include <array>
@@ -14,18 +14,26 @@ using namespace singularity_engine;
 using namespace input;
 using namespace graphics;
 
-
 static double g_Time = 0.0;
 static bool	g_WantUpdateMonitors = true;
 static std::shared_ptr<Window> g_SEWindow = nullptr;
 static bool	g_MouseJustPressed[3] = { false, false, false };
+
+void ImGui_ImplSE_CharCB(uint c) {
+	ImGuiIO& io = ImGui::GetIO();
+	io.AddInputCharacter(c);
+}
 
 bool ImGui_ImplSE_Init(std::shared_ptr<Window> window)
 {
 	g_SEWindow = window;
 	g_Time = 0.0;
 
+	g_SEWindow->setCharCallback(ImGui_ImplSE_CharCB);
+
 	ImGuiIO& io = ImGui::GetIO();
+
+	io.ConfigWindowsMoveFromTitleBarOnly = true;
 
 	io.BackendPlatformName = "imgui_impl_singularityengine";
 	io.BackendRendererName = "imgui_impl_singularityengine[opengl/vulkan]";
@@ -52,6 +60,8 @@ bool ImGui_ImplSE_Init(std::shared_ptr<Window> window)
 	io.KeyMap[ImGuiKey_Y] = Keys::KEY_Y;
 	io.KeyMap[ImGuiKey_Z] = Keys::KEY_Z;
 
+	io.ImeWindowHandle = g_SEWindow->getWindowHandle();
+
 	ImGui_ImplOpenGL3_Init("#version 330 core");
 
 	return true;
@@ -60,6 +70,15 @@ bool ImGui_ImplSE_Init(std::shared_ptr<Window> window)
 void ImGui_ImplSE_Shutdown()
 {
 	ImGui_ImplOpenGL3_Shutdown();
+	g_SEWindow.reset();
+}
+
+void ImGui_ImplSE_Update()
+{
+	ImGuiIO& io = ImGui::GetIO();
+
+	io.MouseWheelH += InputManager::getPointerScroll().x;
+	io.MouseWheel += InputManager::getPointerScroll().y;
 }
 
 void ImGui_ImplSE_UpdateCursor()
@@ -69,8 +88,8 @@ void ImGui_ImplSE_UpdateCursor()
 	for (uint i = 0; i < IM_ARRAYSIZE(g_MouseJustPressed); ++i)
 		g_MouseJustPressed[i] = InputManager::getPointerStates()[i];
 
-	io.MouseWheelH = InputManager::getPointerScroll().x / 10;
-	io.MouseWheel += InputManager::getPointerScroll().y / 10;
+	io.MouseWheelH += InputManager::getPointerScroll().x;
+	io.MouseWheel += InputManager::getPointerScroll().y;
 
 	io.MousePos.x = InputManager::getPointerPosition().x;
 	io.MousePos.y = InputManager::getPointerPosition().y;
@@ -84,7 +103,8 @@ void ImGui_ImplSE_UpdateCursor()
 void ImGui_ImplSE_UpdateKeys()
 {
 	ImGuiIO& io = ImGui::GetIO();
-	for (uint i = 0; i < 512; i++)
+
+	for (uint i = 0; i < 512; i++) 
 		io.KeysDown[i] = InputManager::getKeyStates()[i];
 
 	io.KeyCtrl = io.KeysDown[Keys::KEY_LEFT_CONTROL] || io.KeysDown[Keys::KEY_RIGHT_CONTROL];
@@ -111,16 +131,12 @@ void ImGui_ImplSE_NewFrame()
 	io.MousePos = ImVec2(-FLT_MAX, -FLT_MAX);
 
 	// Setup time step
-	if (Walicia::getInstance()->getDeltatime() <= 0.0 || g_Time < 0.0) // hack for initial newframe when deltatime is ded TODO: Fix initial deltatime in Application class
+	if (Wallicia::getInstance()->getDeltatime() <= 0.0 || g_Time < 0.0) // hack for initial newframe when deltatime is ded TODO: Fix initial deltatime in Application class
 		io.DeltaTime = (float)(1.0f / 60.0f);
-	else // for some odd reason using getDeltatime value causes button times to be 2x faster, breaking double clicking etc
-		io.DeltaTime = (float)(Walicia::getInstance()->getTime() - g_Time);
+	else
+		io.DeltaTime = (float)(Wallicia::getInstance()->getTime() - g_Time);
 
-	g_Time = Walicia::getInstance()->getTime();
-
-	// Input
-	ImGui_ImplSE_UpdateKeys();
-	ImGui_ImplSE_UpdateCursor();
+	g_Time = Wallicia::getInstance()->getTime();
 
 	ImGui_ImplOpenGL3_NewFrame();
 }
