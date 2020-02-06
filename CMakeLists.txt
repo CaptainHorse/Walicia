@@ -17,7 +17,11 @@ add_subdirectory("Submodules/singularity_engine/")
 set(PROJECT_LINK_LIBS SE_application)
 
 # Executable
-add_executable(Wallicia "")
+if(MSVC)
+  add_executable(Wallicia ${CMAKE_CURRENT_SOURCE_DIR}/icon.rc)
+else()
+  add_executable(Wallicia "")
+endif()
 
 # Sources
 target_sources(Wallicia

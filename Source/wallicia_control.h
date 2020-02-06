@@ -26,11 +26,12 @@ ImGui::FileBrowser fileDialog;
 static bool open = true;
 static bool init = false;
 
-bool isVulkan = false;
-
 bool withSound = false;
 bool showConsole = true;
+bool windowTopMost = true;
+bool windowBuddyMode = false;
 bool keepaspectratio = false;
+bool windowTransparency = true;
 bool windowFollowCursor = false;
 maths::vector4 clearcolor = maths::vector4(0.0f);
 maths::vector2 windowscale = maths::vector2(1.0f);
@@ -96,9 +97,6 @@ void Draw_Wallicia_Control(std::shared_ptr<Window> ctrl)
 	} else {
 		if (!init) {
 			window = WindowManager::GetCurrentWithContext();
-			RendererManager::getRenderer() = RendererManager::getRenderer();
-			if (RendererManager::getRenderer()->getRendererString() == "Vulkan")
-				isVulkan = true;
 
 			windowSize = window->getWindowSize();
 			clearcolor = RendererManager::getRenderer()->getClearColor();
@@ -108,6 +106,22 @@ void Draw_Wallicia_Control(std::shared_ptr<Window> ctrl)
 			fileDialog.SetWindowSize(ctrl->getWidth(), ctrl->getHeight());
 			fileDialog.SetTitle("Choose Video File");
 			fileDialog.SetTypeFilters({ ".mp4", ".avi", ".webm", ".mov" });
+
+			auto f = window->getWindowFlags();
+			if (f & eWindowFlag_Transparent)
+				windowTransparency = true;
+			else
+				windowTransparency = false;
+
+			if (f & eWindowFlag_TopMost)
+				windowTopMost = true;
+			else
+				windowTopMost = false;
+
+			if (f & eWindowFlag_DesktopWindow)
+				windowBuddyMode = false;
+			else
+				windowBuddyMode = true;
 
 			Reset();
 			Load_Config(); 
@@ -121,8 +135,33 @@ void Draw_Wallicia_Control(std::shared_ptr<Window> ctrl)
 		ImGui::Begin("Wallicia Control", &open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
 
 		// Just some basic info
-		auto [v0, v1, v2] = RendererManager::getRenderer()->getAPIVersion();
-		ImGui::Text(fmt::format("Renderer: {} [{}.{}.{}]", RendererManager::getRenderer()->getRendererString(), v0, v1, v2).c_str());
+		ImGui::Text("Renderer");
+		ImGui::SameLine();
+
+		std::vector<std::string> items = { "OpenGL", "Vulkan" }; // TODO: Get available renderer names programmatically
+		if (ImGui::BeginCombo("##renderer", RendererManager::getRenderer()->getRendererString().c_str()))
+		{
+			for (auto& item : items) {
+				bool is_selected = (RendererManager::getRenderer()->getRendererString() == item);
+				if (ImGui::Selectable(item.c_str(), is_selected)) {
+					if (item == "Vulkan") {
+						Wallicia::getInstance()->switchRenderer(RendererType::eVulkan);
+						window = WindowManager::GetCurrentWithContext();
+						Wallicia::vulkanMode = true;
+						Wallicia::RendererSetup();
+					} else if (item == "OpenGL") {
+						Wallicia::getInstance()->switchRenderer(RendererType::eOpenGL);
+						window = WindowManager::GetCurrentWithContext();
+						Wallicia::vulkanMode = false;
+						Wallicia::RendererSetup();
+					}
+				}
+
+				if (is_selected)
+					ImGui::SetItemDefaultFocus(); // Set the initial focus when opening the combo (scrolling + for keyboard navigation support in the upcoming navigation branch)
+			}
+			ImGui::EndCombo();
+		}
 
 		ImGui::SameLine(ImGui::GetWindowWidth() - 140.0f);
 
@@ -139,13 +178,58 @@ void Draw_Wallicia_Control(std::shared_ptr<Window> ctrl)
 			Reset();
 
 		// More info
-		ImGui::Text(fmt::format("FPS:{} / UPS: {}", Wallicia::getInstance()->getFPS(), Wallicia::getInstance()->getUPS()).c_str());
+		auto [v0, v1, v2] = RendererManager::getRenderer()->getAPIVersion();
+		ImGui::Text(fmt::format("API Version: {}.{}.{}", v0, v1, v2).c_str());
+		ImGui::Text(fmt::format("FPS:{} / UPS:{}", Wallicia::getInstance()->getFPS(), Wallicia::getInstance()->getUPS()).c_str());
 
 		ImGui::Separator();
 
 		// Win32 Console control
 		if (ImGui::Checkbox("Show Console", &showConsole))
 			Wallicia::getInstance()->HideConsole(!showConsole);
+
+		// Window Top Most option
+		if (ImGui::Checkbox("Window Top Most", &windowTopMost)) {
+			auto f = window->getWindowFlags();
+			if (!windowTopMost)
+				f &= ~eWindowFlag_TopMost;
+			else
+				f |= eWindowFlag_TopMost;
+
+			window->setWindowFlags(f);
+		}
+
+		// Window Buddy Mode option
+		if (ImGui::Checkbox("Window Buddy Mode", &windowBuddyMode)) {
+			auto f = window->getWindowFlags();
+			if (!windowBuddyMode) {
+				f &= ~eWindowFlag_Windowed;
+				f |= eWindowFlag_Borderless;
+				f |= eWindowFlag_DesktopWindow;
+			} else {
+				f &= ~eWindowFlag_Borderless;
+				f &= ~eWindowFlag_DesktopWindow;
+				f |= eWindowFlag_Windowed;
+			}
+
+			window->setWindowFlags(f);
+		}
+
+		// Window transparency option
+		if (ImGui::Checkbox("Window Black Transparency", &windowTransparency)) {
+			auto f = window->getWindowFlags();
+			if (!windowTransparency)
+				f &= ~eWindowFlag_Transparent;
+			else
+				f |= eWindowFlag_Transparent;
+
+			window->setWindowFlags(f);
+		}
+
+		ImGui::SameLine();
+		ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "- FPS heavy, keep window size small");
+
+		ImGui::Separator();
 
 		// Video load option
 		if (ImGui::Button("Load Video"))
@@ -198,15 +282,17 @@ void Draw_Wallicia_Control(std::shared_ptr<Window> ctrl)
 		ImGui::Checkbox("Have window follow cursor (does not work well on Desktop mode)", &windowFollowCursor);
 		if (windowFollowCursor) {
 			ImGui::TextColored(ImVec4(1.0f, cos(Wallicia::getInstance()->getTime() * 1.25f), sin(Wallicia::getInstance()->getTime()), 1.0f), "Press ESC to release");
+#ifdef SE_OS_WINDOWS
 			if (GetKeyState(VK_ESCAPE) & 0x8000) // Normal window based input check doesn't work if focus shiftes while window is being moved
+#endif
 				windowFollowCursor = false;
-
+#ifdef SE_OS_WINDOWS
 			POINT pp;
 			GetCursorPos(&pp);
 			pp.x = pp.x - (ctrl->getWidth() * windowscale.x) / 2;
 			pp.y = pp.y - (ctrl->getHeight() * windowscale.y) / 2;
-			//ClientToScreen((HWND)ctrl->getWindowHandle(), &pp);
 			window->setPosition(pp.x, pp.y);
+#endif
 		}
 
 		ImGui::End();

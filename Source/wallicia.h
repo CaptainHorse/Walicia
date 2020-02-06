@@ -5,6 +5,9 @@
 
 class Wallicia : public SE::Application
 {
+public:
+	static bool vulkanMode;
+
 private:
 	static SE::graphics::VideoDecoder dec;
 
@@ -16,6 +19,8 @@ public:
 
 	static void VideoOpen(const std::string& path, const bool& sound = true);
 	static void VideoClose();
+
+	static void RendererSetup();
 
 	void Setup() override;
 	void Begin() override;

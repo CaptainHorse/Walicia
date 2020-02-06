@@ -14,7 +14,7 @@ using namespace maths;
 using namespace graphics;
 
 static bool buddyMode = false; // TODO: "Drag here" area in control window
-static bool vulkanMode = false; // Oh yeah
+bool Wallicia::vulkanMode = false; // Oh yeah
 
 VideoDecoder Wallicia::dec;
 
@@ -25,37 +25,33 @@ int main(int argc, char** argv) {
 	// Pre-set the argument parser arguments before application does it
 	ArgumentParser::set(argc, argv);
 
-	// Renderer "flags" (haven't yet implemented proper flags..)
-	RendererType rendererFlags;
+	if (ArgumentParser::exists("-opengl") && !ArgumentParser::exists("-vulkan"))
+		Wallicia::vulkanMode = false;
 #ifdef SE_GRAPHICS_VULKAN
-	if (ArgumentParser::exists("-vulkan")) {
-		rendererFlags = eVulkan;
-		vulkanMode = true;
-	} else
+	else if (ArgumentParser::exists("-vulkan") && !ArgumentParser::exists("-opengl"))
+		Wallicia::vulkanMode = true;
 #endif
-		rendererFlags = eOpenGL;
+	else
+		Wallicia::vulkanMode = false;
 
 	// Main window flags
 	int windowFlags = 0;
 	if (ArgumentParser::exists("-buddy")) {
 		windowFlags = eWindowFlag_Windowed | eWindowFlag_NoDecorations | eWindowFlag_Transparent | eWindowFlag_Opaque | eWindowFlag_TopMost | eWindowFlag_NoInput;
-		if (!vulkanMode)
-			windowFlags |= eWindowFlag_OGLContext;
-
 		buddyMode = true;
-	} else {
+	} else
 		windowFlags = eWindowFlag_Borderless | eWindowFlag_NoDecorations | eWindowFlag_DesktopWindow | eWindowFlag_NoInput;
-		if (!vulkanMode)
-			windowFlags |= eWindowFlag_OGLContext;
-	}
 
-	if (ArgumentParser::exists("-fixwp"))
+	// Skip over application creation if we just want to fix and return the wallpaper back to normal
+	if (ArgumentParser::exists("-fixwp")) {
+#ifdef SE_OS_WINDOWS
 		SystemParametersInfoW(SPI_SETDESKWALLPAPER, NULL, NULL, SPIF_SENDCHANGE);
-	else {
+#endif
+	} else {
 		ApplicationParameters params {
 			"Wallicia", // Application name
 			true, 512, 512, windowFlags, // Create window, windowed resolution, flags
-			false, rendererFlags, // Initialize graphics, Renderer type
+			true, eOpenGL, // Initialize graphics, preferred Renderer type
 			true, true, false, false, false, true // Initialize input, audio, scripting, compute, networking, threading, in that order
 		};
 
@@ -83,42 +79,8 @@ void Wallicia::VideoClose()
 	dec.Clean();
 }
 
-void Wallicia::Begin()
+void Wallicia::RendererSetup()
 {
-	// Setting up renderers and stuff manually..
-	std::shared_ptr<Renderer> renderer;
-	if (!vulkanMode)
-		renderer = std::make_shared<graphics::OpenGL_Renderer>();
-#ifdef SE_GRAPHICS_VULKAN
-	else
-		renderer = std::make_shared<graphics::Vulkan_Renderer>();
-#endif
-
-	graphics::RendererManager::PreInit(renderer);
-
-	graphics::ShaderManager::PreInit();
-
-	graphics::RendererParameters params { graphics::WindowManager::GetCurrentWithContext() };
-	graphics::RendererManager::Init(params);
-
-	graphics::ShaderManager::Init();
-
-	// ImGui Wallicia Control Window
-	controlWindow = WindowManager::Add(std::make_shared<Win32_Window>("Wallicia Control", 500, 500, eWindowFlag_Windowed | eWindowFlag_OGLContext | eWindowFlag_StartCenter | eWindowFlag_NoDecorations | eWindowFlag_SystemTray));
-	controlWindow->setWindowSize(512, 512); // Fix for non-properly scaled ImGui widgets at startup
-
-	// Give control window input
-	InputManager::setInputWindow(controlWindow);
-
-	// Nya
-	ImGui::CreateContext();
-
-	// Manually initialize glbinding if we are not creating an OpenGL renderer (for ImGui to use)
-	glbinding::initialize(nullptr, false);
-
-	// ImGui Singularity Engine Implementation init
-	ImGui_ImplSE_Init(controlWindow);
-
 	// Regain control for main window
 	if (!vulkanMode) WindowManager::GetCurrentWithContext()->gainGLContext();
 
@@ -144,9 +106,33 @@ void Wallicia::Begin()
 	RendererManager::getRenderer()->setProjectionMatrix(proj);
 
 	// Get a default shader, create quad with it and add it to the renderer
-	// Load an empty black pixel to work around a bug // TODO: Fix somehow
-	movingQuad = std::make_shared<Renderable>(ModelManager::CreateQuad(vector3(1.0f)), ShaderManager::Get("GLSL/DefaultTexturedTransform"), nullptr);
+	movingQuad = std::make_shared<Renderable>(ModelManager::CreateQuad(vector3(1.0f)), ShaderManager::Get("Default/TexturedTransform"), nullptr);
 	RendererManager::getRenderer()->renderableAdd(movingQuad);
+}
+
+void Wallicia::Begin()
+{
+	// ImGui Wallicia Control Window
+#ifdef SE_OS_WINDOWS
+	controlWindow = WindowManager::Add(std::make_shared<Win32_Window>("Wallicia Control", 500, 500, eWindowFlag_Windowed | eWindowFlag_OGLContext | eWindowFlag_StartCenter | eWindowFlag_NoDecorations | eWindowFlag_SystemTray));
+#else
+	controlWindow = WindowManager::Add(std::make_shared<WL_Window>("Wallicia Control", 500, 500, eWindowFlag_Windowed | eWindowFlag_OGLContext | eWindowFlag_StartCenter | eWindowFlag_NoDecorations | eWindowFlag_SystemTray));
+#endif
+	controlWindow->setWindowSize(512, 512); // Fix for non-properly scaled ImGui widgets at startup
+
+	// Give control window input
+	InputManager::setInputWindow(controlWindow);
+
+	// Nya
+	ImGui::CreateContext();
+
+	// Manually initialize glbinding for ImGui to use
+	glbinding::initialize(nullptr, false);
+
+	// ImGui Singularity Engine Implementation init
+	ImGui_ImplSE_Init(controlWindow);
+
+	RendererSetup();
 }
 
 void Wallicia::Tick()
@@ -158,29 +144,22 @@ maths::tvector2<int> oPos;
 void Wallicia::Update()
 {
 	// Stop when control window is closed fully
-	if (controlWindow->Closed())
+	if (controlWindow != nullptr && controlWindow->Closed())
 		Stop();
-
-	// Aspect ratio aware sin/cos rotation
-	/*if (WindowManager::GetCurrentWithContext()->getFrameWidth() > WindowManager::GetCurrentWithContext()->getFrameHeight()) {
-		movingQuad->position.x = (sinf(getTime()) * WindowManager::GetCurrentWithContext()->getAspectRatio()) / 2.0f;
-		movingQuad->position.y = cosf(getTime()) / 2.0f;
-	} else {
-		movingQuad->position.x = sinf(getTime()) / 2.0f;
-		movingQuad->position.y = (cosf(getTime()) / WindowManager::GetCurrentWithContext()->getAspectRatio()) / 2.0f;
-	}*/
 
 	// ImGui Input
 	ImGui_ImplSE_Update();
 	ImGui_ImplSE_UpdateKeys();
 
-	if (controlWindow->isShowing() && !controlWindow->Closed()) {
+	if (controlWindow != nullptr && controlWindow->isShowing() && !controlWindow->Closed()) {
 		if (InputManager::isPointerClicked(0) && InputManager::getPointerPosition().y <= 20) {
+#ifdef SE_OS_WINDOWS
 			POINT p = {};
 			GetCursorPos(&p);
 			ScreenToClient((HWND)controlWindow->getWindowHandle(), &p);
 			oPos.x = p.x;
 			oPos.y = p.y;
+#endif
 			canMove = true;
 		}
 
@@ -188,8 +167,10 @@ void Wallicia::Update()
 			canMove = false;
 
 		if (ImGui::IsMouseDragging() && canMove) {
+#ifdef SE_OS_WINDOWS
 			POINT p = {};
 			GetCursorPos(&p);
+#endif
 			controlWindow->setPosition(p.x - oPos.x, p.y - oPos.y);
 		}
 	}
@@ -197,17 +178,13 @@ void Wallicia::Update()
 
 void Wallicia::PreRender()
 {
-	RendererManager::CallClears();
-	RendererManager::CallPreRenders();
 }
 
 void Wallicia::Render()
 {
-	RendererManager::CallRenders();
-
 	dec.Frame(getTime());
 
-	if (controlWindow->isShowing() && !controlWindow->Closed()) {
+	if (controlWindow != nullptr && controlWindow->isShowing() && !controlWindow->Closed()) {
 		// Let Wallicia control window take GL context for drawing ImGui
 		controlWindow->gainGLContext();
 
@@ -218,7 +195,7 @@ void Wallicia::Render()
 		ImGui_ImplSE_UpdateCursor();
 		ImGui::NewFrame();
 
-		//ImGui::ShowDemoWindow();
+		//ImGui::ShowDemoWindow(); // Useful to keep around when needing to debug ImGui integration issues
 		Draw_Wallicia_Control(controlWindow);
 
 		ImGui::Render();
@@ -232,18 +209,14 @@ void Wallicia::Render()
 
 void Wallicia::PastRender()
 {
-	RendererManager::CallPastRenders();
 }
 
 void Wallicia::Present()
 {
-	RendererManager::CallPresents();
 }
 
 void Wallicia::Quitting()
 {
 	ImGui_ImplSE_Shutdown();
 	ImGui::DestroyContext();
-
-	RendererManager::Clean();
 }
