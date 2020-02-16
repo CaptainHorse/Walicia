@@ -39,7 +39,7 @@ maths::vector2 windowPosition = maths::vector2(0.0f);
 maths::vector2 oldWindowscale = maths::vector2(1.0f);
 maths::tvector2<uint> windowSize;
 
-std::shared_ptr<Window> window;
+Window* window;
 
 void Reset()
 {
@@ -88,7 +88,7 @@ void Load_Config()
 	}
 }
 
-void Draw_Wallicia_Control(std::shared_ptr<Window> ctrl)
+void Draw_Wallicia_Control(Window* ctrl)
 {
 	if (!open) {
 		// Hide window
@@ -144,21 +144,20 @@ void Draw_Wallicia_Control(std::shared_ptr<Window> ctrl)
 			for (auto& item : items) {
 				bool is_selected = (RendererManager::getRenderer()->getRendererString() == item);
 				if (ImGui::Selectable(item.c_str(), is_selected)) {
+					Wallicia::VideoClose();
 					if (item == "Vulkan") {
 						Wallicia::getInstance()->switchRenderer(RendererType::eVulkan);
-						window = WindowManager::GetCurrentWithContext();
 						Wallicia::vulkanMode = true;
-						Wallicia::RendererSetup();
 					} else if (item == "OpenGL") {
 						Wallicia::getInstance()->switchRenderer(RendererType::eOpenGL);
-						window = WindowManager::GetCurrentWithContext();
 						Wallicia::vulkanMode = false;
-						Wallicia::RendererSetup();
 					}
+					window = WindowManager::GetCurrentWithContext();
+					Wallicia::RendererSetup();
 				}
 
 				if (is_selected)
-					ImGui::SetItemDefaultFocus(); // Set the initial focus when opening the combo (scrolling + for keyboard navigation support in the upcoming navigation branch)
+					ImGui::SetItemDefaultFocus();
 			}
 			ImGui::EndCombo();
 		}
@@ -191,17 +190,20 @@ void Draw_Wallicia_Control(std::shared_ptr<Window> ctrl)
 		// Window Top Most option
 		if (ImGui::Checkbox("Window Top Most", &windowTopMost)) {
 			auto f = window->getWindowFlags();
+			auto p = window->getPosition();
 			if (!windowTopMost)
 				f &= ~eWindowFlag_TopMost;
 			else
 				f |= eWindowFlag_TopMost;
 
 			window->setWindowFlags(f);
+			window->setPosition(p);
 		}
 
 		// Window Buddy Mode option
 		if (ImGui::Checkbox("Window Buddy Mode", &windowBuddyMode)) {
 			auto f = window->getWindowFlags();
+			auto p = window->getPosition();
 			if (!windowBuddyMode) {
 				f &= ~eWindowFlag_Windowed;
 				f |= eWindowFlag_Borderless;
@@ -213,17 +215,20 @@ void Draw_Wallicia_Control(std::shared_ptr<Window> ctrl)
 			}
 
 			window->setWindowFlags(f);
+			window->setPosition(p);
 		}
 
 		// Window transparency option
 		if (ImGui::Checkbox("Window Black Transparency", &windowTransparency)) {
 			auto f = window->getWindowFlags();
+			auto p = window->getPosition();
 			if (!windowTransparency)
 				f &= ~eWindowFlag_Transparent;
 			else
 				f |= eWindowFlag_Transparent;
 
 			window->setWindowFlags(f);
+			window->setPosition(p);
 		}
 
 		ImGui::SameLine();
@@ -279,11 +284,11 @@ void Draw_Wallicia_Control(std::shared_ptr<Window> ctrl)
 		if (ImGui::DragFloat2("Window Position", windowPosition.elements()))
 			window->setPosition(windowPosition);
 
-		ImGui::Checkbox("Have window follow cursor (does not work well on Desktop mode)", &windowFollowCursor);
+		ImGui::Checkbox("Have window follow cursor (not meant for desktop mode)", &windowFollowCursor);
 		if (windowFollowCursor) {
 			ImGui::TextColored(ImVec4(1.0f, cos(Wallicia::getInstance()->getTime() * 1.25f), sin(Wallicia::getInstance()->getTime()), 1.0f), "Press ESC to release");
 #ifdef SE_OS_WINDOWS
-			if (GetKeyState(VK_ESCAPE) & 0x8000) // Normal window based input check doesn't work if focus shiftes while window is being moved
+			if (GetKeyState(VK_ESCAPE) & 0x8000) // Normal window based input check doesn't work if focus shifts while window is being moved
 #endif
 				windowFollowCursor = false;
 #ifdef SE_OS_WINDOWS

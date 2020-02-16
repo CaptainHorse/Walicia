@@ -11,6 +11,7 @@
 using namespace SE;
 using namespace input;
 using namespace maths;
+using namespace system;
 using namespace graphics;
 
 static bool buddyMode = false; // TODO: "Drag here" area in control window
@@ -18,7 +19,7 @@ bool Wallicia::vulkanMode = false; // Oh yeah
 
 VideoDecoder Wallicia::dec;
 
-std::shared_ptr<Window> controlWindow = nullptr;
+Window* controlWindow = nullptr;
 std::shared_ptr<Renderable> movingQuad = nullptr;
 
 int main(int argc, char** argv) {
@@ -66,6 +67,8 @@ void Wallicia::Setup()
 {
 }
 
+// TODO: Fix OpenGL not working anymore with video
+
 void Wallicia::VideoOpen(const std::string& path, const bool& sound)
 {
 	// Decode video file to texture
@@ -81,9 +84,6 @@ void Wallicia::VideoClose()
 
 void Wallicia::RendererSetup()
 {
-	// Regain control for main window
-	if (!vulkanMode) WindowManager::GetCurrentWithContext()->gainGLContext();
-
 	// We require atleast Identity matrix for view
 	RendererManager::getRenderer()->setViewMatrix(matrix4x4::Identity());
 
@@ -114,9 +114,9 @@ void Wallicia::Begin()
 {
 	// ImGui Wallicia Control Window
 #ifdef SE_OS_WINDOWS
-	controlWindow = WindowManager::Add(std::make_shared<Win32_Window>("Wallicia Control", 500, 500, eWindowFlag_Windowed | eWindowFlag_OGLContext | eWindowFlag_StartCenter | eWindowFlag_NoDecorations | eWindowFlag_SystemTray));
+	controlWindow = WindowManager::Add(std::make_unique<Win32_Window>("Wallicia Control", 500, 500, eWindowFlag_Windowed | eWindowFlag_OGLContext | eWindowFlag_StartCenter | eWindowFlag_NoDecorations | eWindowFlag_SystemTray));
 #else
-	controlWindow = WindowManager::Add(std::make_shared<WL_Window>("Wallicia Control", 500, 500, eWindowFlag_Windowed | eWindowFlag_OGLContext | eWindowFlag_StartCenter | eWindowFlag_NoDecorations | eWindowFlag_SystemTray));
+	controlWindow = WindowManager::Add(std::make_unique<WL_Window>("Wallicia Control", 500, 500, eWindowFlag_Windowed | eWindowFlag_OGLContext | eWindowFlag_StartCenter | eWindowFlag_NoDecorations | eWindowFlag_SystemTray));
 #endif
 	controlWindow->setWindowSize(512, 512); // Fix for non-properly scaled ImGui widgets at startup
 
@@ -125,13 +125,17 @@ void Wallicia::Begin()
 
 	// Nya
 	ImGui::CreateContext();
-
+	
 	// Manually initialize glbinding for ImGui to use
 	glbinding::initialize(nullptr, false);
 
 	// ImGui Singularity Engine Implementation init
 	ImGui_ImplSE_Init(controlWindow);
 
+	// Control for main window
+	if (!vulkanMode) WindowManager::GetCurrentWithContext()->gainGLContext();
+
+	// Setup renderer resources
 	RendererSetup();
 }
 
@@ -170,8 +174,8 @@ void Wallicia::Update()
 #ifdef SE_OS_WINDOWS
 			POINT p = {};
 			GetCursorPos(&p);
-#endif
 			controlWindow->setPosition(p.x - oPos.x, p.y - oPos.y);
+#endif
 		}
 	}
 }
@@ -199,7 +203,7 @@ void Wallicia::Render()
 		Draw_Wallicia_Control(controlWindow);
 
 		ImGui::Render();
-
+		
 		ImGui_ImplSE_RenderDrawData(ImGui::GetDrawData());
 
 		// Restore GLContext back to main window

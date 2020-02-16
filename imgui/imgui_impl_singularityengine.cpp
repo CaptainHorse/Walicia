@@ -16,7 +16,7 @@ using namespace graphics;
 
 static double g_Time = 0.0;
 static bool	g_WantUpdateMonitors = true;
-static std::shared_ptr<Window> g_SEWindow = nullptr;
+static Window* g_SEWindow = nullptr;
 static bool	g_MouseJustPressed[3] = { false, false, false };
 
 void ImGui_ImplSE_CharCB(uint c) {
@@ -24,7 +24,7 @@ void ImGui_ImplSE_CharCB(uint c) {
 	io.AddInputCharacter(c);
 }
 
-bool ImGui_ImplSE_Init(std::shared_ptr<Window> window)
+bool ImGui_ImplSE_Init(Window* window)
 {
 	g_SEWindow = window;
 	g_Time = 0.0;
@@ -70,7 +70,7 @@ bool ImGui_ImplSE_Init(std::shared_ptr<Window> window)
 void ImGui_ImplSE_Shutdown()
 {
 	ImGui_ImplOpenGL3_Shutdown();
-	g_SEWindow.reset();
+	g_SEWindow = nullptr;
 }
 
 void ImGui_ImplSE_Update()
