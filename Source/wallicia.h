@@ -20,6 +20,7 @@ public:
 	static void VideoOpen(const std::string& path, const bool& sound = true);
 	static void VideoClose();
 
+	static void ProjectionSetup();
 	static void RendererSetup();
 
 	void Setup() override;

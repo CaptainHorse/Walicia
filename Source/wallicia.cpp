@@ -23,7 +23,7 @@ Window* controlWindow = nullptr;
 std::shared_ptr<Renderable> movingQuad = nullptr;
 
 int main(int argc, char** argv) {
-	// Pre-set the argument parser arguments before application does it
+	// Pre-set the argument parser arguments before application does it since we have custom arguments
 	ArgumentParser::set(argc, argv);
 
 	if (ArgumentParser::exists("-opengl") && !ArgumentParser::exists("-vulkan"))
@@ -79,10 +79,13 @@ void Wallicia::VideoOpen(const std::string& path, const bool& sound)
 
 void Wallicia::VideoClose()
 {
-	dec.Clean();
+	if (dec.isPlaying()) {
+		dec.Clean();
+		RendererManager::getRenderer()->renderableUpdate(movingQuad, nullptr);
+	}
 }
 
-void Wallicia::RendererSetup()
+void Wallicia::ProjectionSetup()
 {
 	// We require atleast Identity matrix for view
 	RendererManager::getRenderer()->setViewMatrix(matrix4x4::Identity());
@@ -104,7 +107,10 @@ void Wallicia::RendererSetup()
 	// Set projection matrix
 	auto proj = matrix4x4::Orthographic(left, right, bottom, top, -10.0f, 10.0f);
 	RendererManager::getRenderer()->setProjectionMatrix(proj);
+}
 
+void Wallicia::RendererSetup()
+{
 	// Get a default shader, create quad with it and add it to the renderer
 	movingQuad = std::make_shared<Renderable>(ModelManager::CreateQuad(vector3(1.0f)), ShaderManager::Get("Default/TexturedTransform"), nullptr);
 	RendererManager::getRenderer()->renderableAdd(movingQuad);
@@ -135,6 +141,8 @@ void Wallicia::Begin()
 	// Control for main window
 	if (!vulkanMode) WindowManager::GetCurrentWithContext()->gainGLContext();
 
+	// Setup renderer projection matrices
+	ProjectionSetup();
 	// Setup renderer resources
 	RendererSetup();
 }

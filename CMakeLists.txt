@@ -60,6 +60,8 @@ target_include_directories(Wallicia
 	"imgui/"
 	"nlohmann/"
 	"Submodules/singularity_engine/Source/"
+	"Submodules/singularity_engine/Submodules/glbinding/source/glbinding/include"
+	"${CMAKE_BINARY_DIR}/Submodules/singularity_engine/Submodules/glbinding/source/glbinding/include"
 )
 
 # Libs
@@ -67,4 +69,5 @@ target_link_libraries(Wallicia
   PRIVATE 
 	${PROJECT_LINK_LIBS} 
 	${CMAKE_DL_LIBS}
+	glbinding::glbinding
 )

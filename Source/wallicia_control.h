@@ -7,6 +7,7 @@
 #include <wallicia.h>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <imgui_stdlib.h>
 #include <imfilebrowser.h>
 
@@ -48,9 +49,6 @@ void Reset()
 
 	windowscale = maths::vector2(1.0f);
 	window->setWindowSize(windowSize.x * windowscale.x, windowSize.y * windowscale.y);
-
-	windowPosition = maths::vector2(0.0f);
-	window->setPosition(windowPosition);
 }
 
 void Save_Config()
@@ -68,23 +66,23 @@ void Load_Config()
 	if (fs::exists("config.json")) {
 		auto s = FileUtilities::read_file("config.json");
 		config = json::parse(s.cbegin(), s.cend());
-	}
 
-	if (config.contains("clearcolor")) {
-		auto c = config["clearcolor"].get<std::array<float32, 4>>();
-		RendererManager::getRenderer()->setClearColor(maths::vector4(c[0], c[1], c[2], c[3]));
-	}
+		if (config.contains("clearcolor")) {
+			auto c = config["clearcolor"].get<std::array<float32, 4>>();
+			RendererManager::getRenderer()->setClearColor(maths::vector4(c[0], c[1], c[2], c[3]));
+		}
 
-	if (config.contains("windowscale")) {
-		auto s = config["windowscale"].get<std::array<float32, 2>>();
-		windowscale = maths::vector2(s[0], s[1]);
-		window->setWindowSize(windowSize.x * windowscale.x, windowSize.y * windowscale.y);
-	}
+		if (config.contains("windowscale")) {
+			auto s = config["windowscale"].get<std::array<float32, 2>>();
+			windowscale = maths::vector2(s[0], s[1]);
+			window->setWindowSize(windowSize.x * windowscale.x, windowSize.y * windowscale.y);
+		}
 
-	if (config.contains("windowposition")) {
-		auto s = config["windowposition"].get<std::array<float32, 2>>();
-		windowPosition = maths::vector2(s[0], s[1]);
-		window->setPosition(windowPosition);
+		if (config.contains("windowposition")) {
+			auto s = config["windowposition"].get<std::array<float32, 2>>();
+			windowPosition = maths::vector2(s[0], s[1]);
+			window->setPosition(windowPosition);
+		}
 	}
 }
 
@@ -99,8 +97,8 @@ void Draw_Wallicia_Control(Window* ctrl)
 			window = WindowManager::GetCurrentWithContext();
 
 			windowSize = window->getWindowSize();
-			clearcolor = RendererManager::getRenderer()->getClearColor();
 			windowPosition = window->getPosition();
+			clearcolor = RendererManager::getRenderer()->getClearColor();
 
 			fileDialog = ImGui::FileBrowser(ImGuiFileBrowserFlags_NoTitleBar);
 			fileDialog.SetWindowSize(ctrl->getWidth(), ctrl->getHeight());
@@ -151,8 +149,8 @@ void Draw_Wallicia_Control(Window* ctrl)
 					} else if (item == "OpenGL") {
 						Wallicia::getInstance()->switchRenderer(RendererType::eOpenGL);
 						Wallicia::vulkanMode = false;
-					}
-					window = WindowManager::GetCurrentWithContext();
+					} 
+					Wallicia::ProjectionSetup();
 					Wallicia::RendererSetup();
 				}
 
@@ -185,25 +183,26 @@ void Draw_Wallicia_Control(Window* ctrl)
 
 		// Win32 Console control
 		if (ImGui::Checkbox("Show Console", &showConsole))
-			Wallicia::getInstance()->HideConsole(!showConsole);
+			Wallicia::HideConsole(!showConsole);
 
 		// Window Top Most option
 		if (ImGui::Checkbox("Window Top Most", &windowTopMost)) {
 			auto f = window->getWindowFlags();
-			auto p = window->getPosition();
+			windowPosition = window->getPosition();
 			if (!windowTopMost)
 				f &= ~eWindowFlag_TopMost;
 			else
 				f |= eWindowFlag_TopMost;
 
 			window->setWindowFlags(f);
-			window->setPosition(p);
+			window->setPosition(windowPosition);
+			ctrl->gainGLContext();
 		}
 
 		// Window Buddy Mode option
 		if (ImGui::Checkbox("Window Buddy Mode", &windowBuddyMode)) {
 			auto f = window->getWindowFlags();
-			auto p = window->getPosition();
+			windowPosition = window->getPosition();
 			if (!windowBuddyMode) {
 				f &= ~eWindowFlag_Windowed;
 				f |= eWindowFlag_Borderless;
@@ -215,20 +214,23 @@ void Draw_Wallicia_Control(Window* ctrl)
 			}
 
 			window->setWindowFlags(f);
-			window->setPosition(p);
+			window->setPosition(windowPosition);
+			Wallicia::ProjectionSetup();
+			ctrl->gainGLContext();
 		}
 
 		// Window transparency option
 		if (ImGui::Checkbox("Window Black Transparency", &windowTransparency)) {
 			auto f = window->getWindowFlags();
-			auto p = window->getPosition();
+			windowPosition = window->getPosition();
 			if (!windowTransparency)
 				f &= ~eWindowFlag_Transparent;
 			else
 				f |= eWindowFlag_Transparent;
 
 			window->setWindowFlags(f);
-			window->setPosition(p);
+			window->setPosition(windowPosition);
+			ctrl->gainGLContext();
 		}
 
 		ImGui::SameLine();
@@ -243,6 +245,10 @@ void Draw_Wallicia_Control(Window* ctrl)
 		ImGui::SameLine();
 
 		ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "- Application framerate is tied to video FPS");
+
+		// Video stop option
+		if (ImGui::Button("Stop Video"))
+			Wallicia::VideoClose();
 
 		// Sound check
 		ImGui::Checkbox("With Sound", &withSound);
@@ -266,6 +272,11 @@ void Draw_Wallicia_Control(Window* ctrl)
 
 		ImGui::Separator();
 
+		if (!windowBuddyMode) {
+			ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
+			ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+		}
+
 		// Window scale option
 		ImGui::Checkbox("Keep Aspect Ratio", &keepaspectratio);
 		if (ImGui::DragFloat2("Window Scale", windowscale.elements(), 0.01f, 0.1f, 1000.0f)) {
@@ -277,6 +288,7 @@ void Draw_Wallicia_Control(Window* ctrl)
 			}
 			window->setWindowSize(windowSize.x * windowscale.x, windowSize.y * windowscale.y);
 			oldWindowscale = windowscale;
+			Wallicia::ProjectionSetup();
 		}
 
 		// Window pos options
@@ -284,7 +296,7 @@ void Draw_Wallicia_Control(Window* ctrl)
 		if (ImGui::DragFloat2("Window Position", windowPosition.elements()))
 			window->setPosition(windowPosition);
 
-		ImGui::Checkbox("Have window follow cursor (not meant for desktop mode)", &windowFollowCursor);
+		ImGui::Checkbox("Have window follow cursor", &windowFollowCursor);
 		if (windowFollowCursor) {
 			ImGui::TextColored(ImVec4(1.0f, cos(Wallicia::getInstance()->getTime() * 1.25f), sin(Wallicia::getInstance()->getTime()), 1.0f), "Press ESC to release");
 #ifdef SE_OS_WINDOWS
@@ -298,6 +310,11 @@ void Draw_Wallicia_Control(Window* ctrl)
 			pp.y = pp.y - (ctrl->getHeight() * windowscale.y) / 2;
 			window->setPosition(pp.x, pp.y);
 #endif
+		}
+
+		if (!windowBuddyMode) {
+			ImGui::PopItemFlag();
+			ImGui::PopStyleVar();
 		}
 
 		ImGui::End();
