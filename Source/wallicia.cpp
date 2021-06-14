@@ -9,18 +9,21 @@
 #include <Utilities/argument_parser.h>
 
 using namespace SE;
+using namespace audio;
 using namespace input;
 using namespace maths;
 using namespace system;
 using namespace graphics;
 
-static bool buddyMode = false; // TODO: "Drag here" area in control window
-bool Wallicia::vulkanMode = false; // Oh yeah
-
-VideoDecoder Wallicia::dec;
+bool Wallicia::buddyMode = false; // TODO: "Drag here" area in control window
+bool Wallicia::vulkanMode = false;
+VideoDecoder Wallicia::videoDecoder;
+std::atomic<bool> Wallicia::keepDecoding = false;
+std::shared_ptr<SE::graphics::Texture> Wallicia::videoTexture;
+std::shared_ptr<SE::graphics::Renderable> Wallicia::videoRenderable;
 
 Window* controlWindow = nullptr;
-std::shared_ptr<Renderable> movingQuad = nullptr;
+std::queue<FrameResult> videoFrames, audioFrames;
 
 int main(int argc, char** argv) {
 	// Pre-set the argument parser arguments before application does it since we have custom arguments
@@ -35,11 +38,17 @@ int main(int argc, char** argv) {
 	else
 		Wallicia::vulkanMode = false;
 
+	int appFlags = eInitAudio | eInitGraphics | eInitInput | eInitThreading | eCreateDefaultWindow;
+	if (Wallicia::vulkanMode) 
+		appFlags |= eRendererVulkan;
+	else
+		appFlags |= eRendererOpenGL;
+
 	// Main window flags
 	int windowFlags = 0;
 	if (ArgumentParser::exists("-buddy")) {
 		windowFlags = eWindowFlag_Windowed | eWindowFlag_NoDecorations | eWindowFlag_Transparent | eWindowFlag_Opaque | eWindowFlag_TopMost | eWindowFlag_NoInput;
-		buddyMode = true;
+		Wallicia::buddyMode = true;
 	} else
 		windowFlags = eWindowFlag_Borderless | eWindowFlag_NoDecorations | eWindowFlag_DesktopWindow | eWindowFlag_NoInput;
 
@@ -50,10 +59,9 @@ int main(int argc, char** argv) {
 #endif
 	} else {
 		ApplicationParameters params {
-			"Wallicia", // Application name
-			true, 512, 512, windowFlags, // Create window, windowed resolution, flags
-			true, eOpenGL, // Initialize graphics, preferred Renderer type
-			true, true, false, false, false, true // Initialize input, audio, scripting, compute, networking, threading, in that order
+			"Wallicia",					// Application name
+			appFlags,					// Application flags
+			{ 1680, 1050, windowFlags }	// Application window creation info
 		};
 
 		Wallicia wallicia(argc, argv, params);
@@ -67,21 +75,36 @@ void Wallicia::Setup()
 {
 }
 
-// TODO: Fix OpenGL not working anymore with video
-
 void Wallicia::VideoOpen(const std::string& path, const bool& sound)
 {
-	// Decode video file to texture
-	auto texture = std::make_shared<Texture>();
-	auto targetFPS = dec.Decode(path, movingQuad, texture, sound);
-	Wallicia::getInstance()->setFPSLimit(targetFPS);
+	auto res = videoDecoder.Init(path, sound);
+	if (sound)
+		AudioManager::getImplementation()->straightPlay(res.audio); // Does initialization on first call
+
+	videoTexture->updateSize(res.width, res.height);
+
+	keepDecoding = true;
+	ThreadManager::AddJobToThread([&]() {
+		while (keepDecoding) {
+			videoDecoder.Decode();
+			videoDecoder.VideoFrame(videoFrames, 2);
+			videoDecoder.AudioFrame(audioFrames, 2);
+			if (!audioFrames.empty() && AudioManager::getImplementation()->straightPlay(std::move(audioFrames.front().audio)))
+				audioFrames.pop();
+		}
+	}, 1);
 }
 
 void Wallicia::VideoClose()
 {
-	if (dec.isPlaying()) {
-		dec.Clean();
-		RendererManager::getRenderer()->renderableUpdate(movingQuad, nullptr);
+	if (keepDecoding) {
+		keepDecoding = false;
+		ThreadManager::WaitForThread(1);
+		videoDecoder.Clean();
+		AudioManager::getImplementation()->straightPlayReset();
+		videoTexture->updateData({}); // Clear out old data
+		videoFrames = {};
+		audioFrames = {};
 	}
 }
 
@@ -112,8 +135,9 @@ void Wallicia::ProjectionSetup()
 void Wallicia::RendererSetup()
 {
 	// Get a default shader, create quad with it and add it to the renderer
-	movingQuad = std::make_shared<Renderable>(ModelManager::CreateQuad(vector3(1.0f)), ShaderManager::Get("Default/TexturedTransform"), nullptr);
-	RendererManager::getRenderer()->renderableAdd(movingQuad);
+	videoTexture = std::make_shared<Texture>(64, 64, true); // Streaming texture needs initial size larger than 0 to avoid issues
+	videoRenderable = std::make_shared<Renderable>(ModelManager::CreateQuad(vector3(1.0f)), ShaderManager::Get("Default/Video"), videoTexture);
+	RendererManager::getRenderer()->renderableAdd(videoRenderable);
 }
 
 void Wallicia::Begin()
@@ -152,7 +176,7 @@ void Wallicia::Tick()
 }
 
 bool canMove = false;
-maths::tvector2<int> oPos;
+maths::tvector<2, int> oPos;
 void Wallicia::Update()
 {
 	// Stop when control window is closed fully
@@ -178,7 +202,7 @@ void Wallicia::Update()
 		if (ImGui::IsMouseReleased(0))
 			canMove = false;
 
-		if (ImGui::IsMouseDragging() && canMove) {
+		if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && canMove) {
 #ifdef SE_OS_WINDOWS
 			POINT p = {};
 			GetCursorPos(&p);
@@ -194,7 +218,10 @@ void Wallicia::PreRender()
 
 void Wallicia::Render()
 {
-	dec.Frame(getTime());
+	while (!videoFrames.empty()) {
+		videoTexture->updateData(std::move(videoFrames.front().data));
+		videoFrames.pop();
+	}
 
 	if (controlWindow != nullptr && controlWindow->isShowing() && !controlWindow->Closed()) {
 		// Let Wallicia control window take GL context for drawing ImGui
@@ -204,7 +231,6 @@ void Wallicia::Render()
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		ImGui_ImplSE_NewFrame();
-		ImGui_ImplSE_UpdateCursor();
 		ImGui::NewFrame();
 
 		//ImGui::ShowDemoWindow(); // Useful to keep around when needing to debug ImGui integration issues

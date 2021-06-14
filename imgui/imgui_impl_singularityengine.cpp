@@ -10,7 +10,7 @@
 
 #include <Input/input_manager.h>
 
-using namespace singularity_engine;
+using namespace SE;
 using namespace input;
 using namespace graphics;
 
@@ -24,7 +24,7 @@ void ImGui_ImplSE_CharCB(uint c) {
 	io.AddInputCharacter(c);
 }
 
-bool ImGui_ImplSE_Init(Window* window)
+void ImGui_ImplSE_Init(Window* window)
 {
 	g_SEWindow = window;
 	g_Time = 0.0;
@@ -60,11 +60,7 @@ bool ImGui_ImplSE_Init(Window* window)
 	io.KeyMap[ImGuiKey_Y] = Keys::KEY_Y;
 	io.KeyMap[ImGuiKey_Z] = Keys::KEY_Z;
 
-	io.ImeWindowHandle = g_SEWindow->getWindowHandle();
-
 	ImGui_ImplOpenGL3_Init("#version 330 core");
-
-	return true;
 }
 
 void ImGui_ImplSE_Shutdown()
@@ -76,7 +72,6 @@ void ImGui_ImplSE_Shutdown()
 void ImGui_ImplSE_Update()
 {
 	ImGuiIO& io = ImGui::GetIO();
-
 	io.MouseWheelH += InputManager::getPointerScroll().x;
 	io.MouseWheel += InputManager::getPointerScroll().y;
 }
@@ -87,9 +82,6 @@ void ImGui_ImplSE_UpdateCursor()
 
 	for (uint i = 0; i < IM_ARRAYSIZE(g_MouseJustPressed); ++i)
 		g_MouseJustPressed[i] = InputManager::getPointerStates()[i];
-
-	io.MouseWheelH += InputManager::getPointerScroll().x;
-	io.MouseWheel += InputManager::getPointerScroll().y;
 
 	io.MousePos.x = InputManager::getPointerPosition().x;
 	io.MousePos.y = InputManager::getPointerPosition().y;
@@ -107,6 +99,7 @@ void ImGui_ImplSE_UpdateKeys()
 	for (uint i = 0; i < 512; i++) 
 		io.KeysDown[i] = InputManager::getKeyStates()[i];
 
+	// TODO/NOTE: Warns about identical stuff, it's cuz we don't have left and right separated yet
 	io.KeyCtrl = io.KeysDown[Keys::KEY_LEFT_CONTROL] || io.KeysDown[Keys::KEY_RIGHT_CONTROL];
 	io.KeyShift = io.KeysDown[Keys::KEY_LEFT_SHIFT] || io.KeysDown[Keys::KEY_RIGHT_SHIFT];
 	io.KeyAlt = io.KeysDown[Keys::KEY_LEFT_ALT] || io.KeysDown[Keys::KEY_RIGHT_ALT];
@@ -129,6 +122,9 @@ void ImGui_ImplSE_NewFrame()
 
 	const ImVec2 mouse_pos_backup = io.MousePos;
 	io.MousePos = ImVec2(-FLT_MAX, -FLT_MAX);
+
+	ImGui_ImplSE_UpdateCursor();
+	ImGui_ImplSE_UpdateKeys();
 
 	// Setup time step
 	if (Wallicia::getInstance()->getDeltatime() <= 0.0 || g_Time < 0.0) // hack for initial newframe when deltatime is ded TODO: Fix initial deltatime in Application class

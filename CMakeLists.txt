@@ -1,20 +1,16 @@
-# Basic CMake stuff #
-project(Wallicia)
+cmake_minimum_required(VERSION 3.20)
 
-if (MSVC)
-  cmake_minimum_required(VERSION 3.15)
-else()
-  cmake_minimum_required(VERSION 3.14)
-endif()
+project(
+  Wallicia
+  VERSION 0.2.0
+  LANGUAGES C CXX
+)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Singularity Engine Subdirectory #
 add_subdirectory("Submodules/singularity_engine/")
-
-# Wallicia #
-set(PROJECT_LINK_LIBS SE_application)
 
 # Executable
 if(MSVC)
@@ -36,6 +32,7 @@ target_sources(Wallicia
 	"imgui/imgui_demo.cpp"
 	"imgui/imgui_draw.cpp"
 	"imgui/imgui_internal.h"
+	"imgui/imgui_tables.cpp"
 	"imgui/imgui_widgets.cpp"
 	"imgui/imstb_rectpack.h"
 	"imgui/imstb_textedit.h"
@@ -67,7 +64,6 @@ target_include_directories(Wallicia
 # Libs
 target_link_libraries(Wallicia 
   PRIVATE 
-	${PROJECT_LINK_LIBS} 
+    SE::Application
 	${CMAKE_DL_LIBS}
-	glbinding::glbinding
 )

@@ -27,7 +27,7 @@ ImGui::FileBrowser fileDialog;
 static bool open = true;
 static bool init = false;
 
-bool withSound = false;
+bool withSound = true;
 bool showConsole = true;
 bool windowTopMost = true;
 bool windowBuddyMode = false;
@@ -38,7 +38,7 @@ maths::vector4 clearcolor = maths::vector4(0.0f);
 maths::vector2 windowscale = maths::vector2(1.0f);
 maths::vector2 windowPosition = maths::vector2(0.0f);
 maths::vector2 oldWindowscale = maths::vector2(1.0f);
-maths::tvector2<uint> windowSize;
+maths::tvector<2, uint> windowSize;
 
 Window* window;
 
@@ -53,9 +53,9 @@ void Reset()
 
 void Save_Config()
 {
-	config["clearcolor"] = clearcolor.elementsArray();
-	config["windowscale"] = windowscale.elementsArray();
-	config["windowposition"] = windowPosition.elementsArray();
+	config["clearcolor"] = clearcolor.components;
+	config["windowscale"] = windowscale.components;
+	config["windowposition"] = windowPosition.components;
 
 	std::ofstream file("config.json");
 	file << config;
@@ -133,32 +133,35 @@ void Draw_Wallicia_Control(Window* ctrl)
 		ImGui::Begin("Wallicia Control", &open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
 
 		// Just some basic info
-		ImGui::Text("Renderer");
+		ImGui::Text("Renderer:");
 		ImGui::SameLine();
 
-		std::vector<std::string> items = { "OpenGL", "Vulkan" }; // TODO: Get available renderer names programmatically
-		if (ImGui::BeginCombo("##renderer", RendererManager::getRenderer()->getRendererString().c_str()))
-		{
-			for (auto& item : items) {
-				bool is_selected = (RendererManager::getRenderer()->getRendererString() == item);
-				if (ImGui::Selectable(item.c_str(), is_selected)) {
-					Wallicia::VideoClose();
-					if (item == "Vulkan") {
-						Wallicia::getInstance()->switchRenderer(RendererType::eVulkan);
-						Wallicia::vulkanMode = true;
-					} else if (item == "OpenGL") {
-						Wallicia::getInstance()->switchRenderer(RendererType::eOpenGL);
-						Wallicia::vulkanMode = false;
-					} 
-					Wallicia::ProjectionSetup();
-					Wallicia::RendererSetup();
-				}
+		ImGui::Text(RendererManager::getRenderer()->getRendererString().c_str());
 
-				if (is_selected)
-					ImGui::SetItemDefaultFocus();
-			}
-			ImGui::EndCombo();
-		}
+		// TODO: Out of order
+		//std::vector<std::string> items = { "OpenGL", "Vulkan" }; // TODO: Get available renderer names programmatically
+		//if (ImGui::BeginCombo("##renderer", RendererManager::getRenderer()->getRendererString().c_str()))
+		//{
+		//	for (auto& item : items) {
+		//		bool is_selected = (RendererManager::getRenderer()->getRendererString() == item);
+		//		if (ImGui::Selectable(item.c_str(), is_selected)) {
+		//			Wallicia::VideoClose();
+		//			if (item == "Vulkan") {
+		//				Wallicia::getInstance()->switchRenderer(eRendererVulkan);
+		//				Wallicia::vulkanMode = true;
+		//			} else if (item == "OpenGL") {
+		//				//Wallicia::getInstance()->switchRenderer(eRendererOpenGL);
+		//				//Wallicia::vulkanMode = false;
+		//			} 
+		//			Wallicia::ProjectionSetup();
+		//			Wallicia::RendererSetup();
+		//		}
+
+		//		if (is_selected)
+		//			ImGui::SetItemDefaultFocus();
+		//	}
+		//	ImGui::EndCombo();
+		//}
 
 		ImGui::SameLine(ImGui::GetWindowWidth() - 140.0f);
 
@@ -176,8 +179,8 @@ void Draw_Wallicia_Control(Window* ctrl)
 
 		// More info
 		auto [v0, v1, v2] = RendererManager::getRenderer()->getAPIVersion();
-		ImGui::Text(fmt::format("API Version: {}.{}.{}", v0, v1, v2).c_str());
-		ImGui::Text(fmt::format("FPS:{} / UPS:{}", Wallicia::getInstance()->getFPS(), Wallicia::getInstance()->getUPS()).c_str());
+		ImGui::Text(std::format("API Version: {}.{}.{}", v0, v1, v2).c_str());
+		ImGui::Text(std::format("FPS:{} / UPS:{}", Wallicia::getInstance()->getFPS(), Wallicia::getInstance()->getUPS()).c_str());
 
 		ImGui::Separator();
 
@@ -242,19 +245,12 @@ void Draw_Wallicia_Control(Window* ctrl)
 		if (ImGui::Button("Load Video"))
 			fileDialog.Open();
 
-		ImGui::SameLine();
-
-		ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "- Application framerate is tied to video FPS");
-
 		// Video stop option
 		if (ImGui::Button("Stop Video"))
 			Wallicia::VideoClose();
 
 		// Sound check
 		ImGui::Checkbox("With Sound", &withSound);
-
-		ImGui::SameLine();
-		ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "- Audio is loaded into RAM, memory expensive");
 
 		fileDialog.Display();
 
@@ -306,8 +302,8 @@ void Draw_Wallicia_Control(Window* ctrl)
 #ifdef SE_OS_WINDOWS
 			POINT pp;
 			GetCursorPos(&pp);
-			pp.x = pp.x - (ctrl->getWidth() * windowscale.x) / 2;
-			pp.y = pp.y - (ctrl->getHeight() * windowscale.y) / 2;
+			pp.x -= window->getWidth() / 2;
+			pp.y -= window->getHeight() / 2;
 			window->setPosition(pp.x, pp.y);
 #endif
 		}

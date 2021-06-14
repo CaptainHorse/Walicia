@@ -1,15 +1,19 @@
 #pragma once
 
-#include <Common/common.h>
 #include <Common/common_includes.h>
+#include <Graphics/Video/video_decoder.h>
 
 class Wallicia : public SE::Application
 {
 public:
+	static bool buddyMode;
 	static bool vulkanMode;
 
 private:
-	static SE::graphics::VideoDecoder dec;
+	static std::atomic<bool> keepDecoding;
+	static SE::graphics::VideoDecoder videoDecoder;
+	static std::shared_ptr<SE::graphics::Texture> videoTexture;
+	static std::shared_ptr<SE::graphics::Renderable> videoRenderable;
 
 public:
 	Wallicia(int argc, char** argv, SE::ApplicationParameters parameters)
