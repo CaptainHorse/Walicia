@@ -30,6 +30,7 @@ std::queue<FrameResult> videoFrames, audioFrames;
 int64 lastVideoPts = 0, lastAudioPts = 0;
 float64 videoClock = 0.0;
 std::atomic_bool reachedEnd = false;
+std::vector<uint> workingThreads;
 
 int main(int argc, char** argv) {
 	// Pre-set the argument parser arguments before application does it since we have custom arguments
@@ -96,21 +97,25 @@ void Wallicia::VideoOpen(const std::string& path, const bool& sound)
 	RendererManager::getRenderer()->textureUpdateSize(videoTexture);
 
 	keepDecoding = true;
-	ThreadManager::AddJobToThread([&]() {
-		while (keepDecoding) {
-			if (!reachedEnd && videoDecoder.Decode(10)) reachedEnd = true;
-			videoDecoder.VideoFrame(videoFrames, 4);
-			videoDecoder.AudioFrame(audioFrames, 4);
-			std::this_thread::sleep_for(std::chrono::microseconds(1));
+	workingThreads.emplace_back(
+		ThreadManager::AddJobToFreeThread([&]() {
+			while (keepDecoding) {
+				if (!reachedEnd && videoDecoder.Decode(10)) reachedEnd = true;
+				videoDecoder.VideoFrame(videoFrames, 5);
+				videoDecoder.AudioFrame(audioFrames, 5);
+				std::this_thread::sleep_for(std::chrono::milliseconds(10));
+			}
 		}
-	}, 1);
+	));
 }
 
 void Wallicia::VideoClose()
 {
 	if (keepDecoding) {
 		keepDecoding = false;
-		ThreadManager::WaitForThread(1);
+		for (auto thread : workingThreads)
+			ThreadManager::WaitForThread(thread);
+
 		videoDecoder.Clean();
 		AudioManager::getImplementation()->straightPlayReset();
 		videoTexture->data = {}; // Clear out old data
