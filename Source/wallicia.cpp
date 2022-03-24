@@ -3,12 +3,15 @@
 #include <memory>
 #include <random>
 
+#include <glbinding/glbinding.h>
+
 #include <wallicia_control.h>
 #include <imgui_impl_singularityengine.h>
 
 #include <Utilities/argument_parser.h>
 
 using namespace SE;
+using namespace common;
 using namespace audio;
 using namespace input;
 using namespace maths;
@@ -24,6 +27,9 @@ std::shared_ptr<SE::graphics::Renderable> Wallicia::videoRenderable;
 
 Window* controlWindow = nullptr;
 std::queue<FrameResult> videoFrames, audioFrames;
+int64 lastVideoPts = 0, lastAudioPts = 0;
+float64 videoClock = 0.0;
+std::atomic_bool reachedEnd = false;
 
 int main(int argc, char** argv) {
 	// Pre-set the argument parser arguments before application does it since we have custom arguments
@@ -38,14 +44,14 @@ int main(int argc, char** argv) {
 	else
 		Wallicia::vulkanMode = false;
 
-	int appFlags = eInitAudio | eInitGraphics | eInitInput | eInitThreading | eCreateDefaultWindow;
+	uint appFlags = eInitAudio | eInitGraphics | eInitInput | eInitThreading | eCreateDefaultWindow;
 	if (Wallicia::vulkanMode) 
 		appFlags |= eRendererVulkan;
 	else
 		appFlags |= eRendererOpenGL;
 
 	// Main window flags
-	int windowFlags = 0;
+	uint windowFlags;
 	if (ArgumentParser::exists("-buddy")) {
 		windowFlags = eWindowFlag_Windowed | eWindowFlag_NoDecorations | eWindowFlag_Transparent | eWindowFlag_Opaque | eWindowFlag_TopMost | eWindowFlag_NoInput;
 		Wallicia::buddyMode = true;
@@ -58,7 +64,7 @@ int main(int argc, char** argv) {
 		SystemParametersInfoW(SPI_SETDESKWALLPAPER, NULL, NULL, SPIF_SENDCHANGE);
 #endif
 	} else {
-		ApplicationParameters params {
+		const ApplicationParameters params {
 			"Wallicia",					// Application name
 			appFlags,					// Application flags
 			{ 1680, 1050, windowFlags }	// Application window creation info
@@ -77,20 +83,25 @@ void Wallicia::Setup()
 
 void Wallicia::VideoOpen(const std::string& path, const bool& sound)
 {
-	auto res = videoDecoder.Init(path, sound);
+	const auto res = videoDecoder.Init(path, sound);
 	if (sound)
 		AudioManager::getImplementation()->straightPlay(res.audio); // Does initialization on first call
+	
+	videoClock = 0.0;
+	lastVideoPts = 0;
+	lastAudioPts = 0;
+	reachedEnd = false;
 
 	videoTexture->updateSize(res.width, res.height);
+	RendererManager::getRenderer()->textureUpdateSize(videoTexture);
 
 	keepDecoding = true;
 	ThreadManager::AddJobToThread([&]() {
 		while (keepDecoding) {
-			videoDecoder.Decode();
-			videoDecoder.VideoFrame(videoFrames, 2);
-			videoDecoder.AudioFrame(audioFrames, 2);
-			if (!audioFrames.empty() && AudioManager::getImplementation()->straightPlay(std::move(audioFrames.front().audio)))
-				audioFrames.pop();
+			if (!reachedEnd && videoDecoder.Decode(10)) reachedEnd = true;
+			videoDecoder.VideoFrame(videoFrames, 4);
+			videoDecoder.AudioFrame(audioFrames, 4);
+			std::this_thread::sleep_for(std::chrono::microseconds(1));
 		}
 	}, 1);
 }
@@ -102,7 +113,7 @@ void Wallicia::VideoClose()
 		ThreadManager::WaitForThread(1);
 		videoDecoder.Clean();
 		AudioManager::getImplementation()->straightPlayReset();
-		videoTexture->updateData({}); // Clear out old data
+		videoTexture->data = {}; // Clear out old data
 		videoFrames = {};
 		audioFrames = {};
 	}
@@ -128,7 +139,7 @@ void Wallicia::ProjectionSetup()
 	}
 
 	// Set projection matrix
-	auto proj = matrix4x4::Orthographic(left, right, bottom, top, -10.0f, 10.0f);
+	const auto proj = matrix4x4::Orthographic(left, right, bottom, top, -10.0f, 10.0f);
 	RendererManager::getRenderer()->setProjectionMatrix(proj);
 }
 
@@ -136,6 +147,7 @@ void Wallicia::RendererSetup()
 {
 	// Get a default shader, create quad with it and add it to the renderer
 	videoTexture = std::make_shared<Texture>(64, 64, true); // Streaming texture needs initial size larger than 0 to avoid issues
+	RendererManager::getRenderer()->addTexture(videoTexture);
 	videoRenderable = std::make_shared<Renderable>(ModelManager::CreateQuad(vector3(1.0f)), ShaderManager::Get("Default/Video"), videoTexture);
 	RendererManager::getRenderer()->renderableAdd(videoRenderable);
 }
@@ -143,7 +155,7 @@ void Wallicia::RendererSetup()
 void Wallicia::Begin()
 {
 	// ImGui Wallicia Control Window
-#ifdef SE_OS_WINDOWS
+#ifdef _WIN32
 	controlWindow = WindowManager::Add(std::make_unique<Win32_Window>("Wallicia Control", 500, 500, eWindowFlag_Windowed | eWindowFlag_OGLContext | eWindowFlag_StartCenter | eWindowFlag_NoDecorations | eWindowFlag_SystemTray));
 #else
 	controlWindow = WindowManager::Add(std::make_unique<WL_Window>("Wallicia Control", 500, 500, eWindowFlag_Windowed | eWindowFlag_OGLContext | eWindowFlag_StartCenter | eWindowFlag_NoDecorations | eWindowFlag_SystemTray));
@@ -189,10 +201,10 @@ void Wallicia::Update()
 
 	if (controlWindow != nullptr && controlWindow->isShowing() && !controlWindow->Closed()) {
 		if (InputManager::isPointerClicked(0) && InputManager::getPointerPosition().y <= 20) {
-#ifdef SE_OS_WINDOWS
+#ifdef _WIN32
 			POINT p = {};
 			GetCursorPos(&p);
-			ScreenToClient((HWND)controlWindow->getWindowHandle(), &p);
+			ScreenToClient(static_cast<HWND>(controlWindow->getWindowHandle()), &p);
 			oPos.x = p.x;
 			oPos.y = p.y;
 #endif
@@ -203,7 +215,7 @@ void Wallicia::Update()
 			canMove = false;
 
 		if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && canMove) {
-#ifdef SE_OS_WINDOWS
+#ifdef _WIN32
 			POINT p = {};
 			GetCursorPos(&p);
 			controlWindow->setPosition(p.x - oPos.x, p.y - oPos.y);
@@ -218,9 +230,28 @@ void Wallicia::PreRender()
 
 void Wallicia::Render()
 {
-	while (!videoFrames.empty()) {
-		videoTexture->updateData(std::move(videoFrames.front().data));
-		videoFrames.pop();
+	if (keepDecoding) {
+		videoClock += getInstance()->getDeltatime() * 1000000.0;
+
+		while (!videoFrames.empty() && videoClock >= lastVideoPts) {
+			videoTexture->data = videoFrames.front().data;
+			RendererManager::getRenderer()->textureUpdate(videoTexture);
+			lastVideoPts = videoFrames.front().pts;
+			videoFrames.pop();
+		}
+
+		while (!audioFrames.empty() && videoClock >= lastAudioPts && AudioManager::getImplementation()->straightPlay(audioFrames.front().audio)) {
+			lastAudioPts = audioFrames.front().pts;
+			audioFrames.pop();
+		}
+		
+		// Do a forced synchronization when video loops
+		if (reachedEnd && audioFrames.empty() && videoFrames.empty()) {
+			videoClock = 0.0;
+			lastVideoPts = 0;
+			lastAudioPts = 0;
+			reachedEnd = false;
+		}
 	}
 
 	if (controlWindow != nullptr && controlWindow->isShowing() && !controlWindow->Closed()) {

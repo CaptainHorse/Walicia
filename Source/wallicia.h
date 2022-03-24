@@ -16,7 +16,7 @@ private:
 	static std::shared_ptr<SE::graphics::Renderable> videoRenderable;
 
 public:
-	Wallicia(int argc, char** argv, SE::ApplicationParameters parameters)
+	Wallicia(int argc, char** argv, const SE::ApplicationParameters parameters)
 		: SE::Application(argc, argv, parameters)
 	{
 	}

@@ -35,3 +35,6 @@
 /CMakeSettings.json
 /build
 /.vscode
+
+# Something
+Folder.DotSettings.user

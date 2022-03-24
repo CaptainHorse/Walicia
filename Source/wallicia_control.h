@@ -1,14 +1,11 @@
 #pragma once
 
-#include <memory>
-#include <iostream>
 #include <filesystem>
 
 #include <wallicia.h>
 
 #include <imgui.h>
 #include <imgui_internal.h>
-#include <imgui_stdlib.h>
 #include <imfilebrowser.h>
 
 #include <json.hpp>
@@ -16,33 +13,34 @@
 #include <Utilities/fileutilities.h>
 
 using namespace SE;
+using namespace common;
 using namespace input;
 using namespace graphics;
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
-json config;
-ImGui::FileBrowser fileDialog;
+inline json config;
+inline ImGui::FileBrowser fileDialog;
 
-static bool open = true;
-static bool init = false;
+static bool openControl = true;
+static bool initControl = false;
 
-bool withSound = true;
-bool showConsole = true;
-bool windowTopMost = true;
-bool windowBuddyMode = false;
-bool keepaspectratio = false;
-bool windowTransparency = true;
-bool windowFollowCursor = false;
-maths::vector4 clearcolor = maths::vector4(0.0f);
-maths::vector2 windowscale = maths::vector2(1.0f);
-maths::vector2 windowPosition = maths::vector2(0.0f);
-maths::vector2 oldWindowscale = maths::vector2(1.0f);
-maths::tvector<2, uint> windowSize;
+inline bool withSound = true;
+inline bool showConsole = true;
+inline bool windowTopMost = true;
+inline bool windowBuddyMode = false;
+inline bool keepaspectratio = false;
+inline bool windowTransparency = false;
+inline bool windowFollowCursor = false;
+inline maths::vector4 clearcolor = maths::vector4(0.0f);
+inline maths::vector2 windowscale = maths::vector2(1.0f);
+inline maths::vector2 windowPosition = maths::vector2(0.0f);
+inline maths::vector2 oldWindowscale = maths::vector2(1.0f);
+inline maths::tvector<2, uint> windowSize;
 
-Window* window;
+inline Window* window;
 
-void Reset()
+inline void Reset()
 {
 	clearcolor = maths::vector4(0.0f);
 	RendererManager::getRenderer()->setClearColor(clearcolor);
@@ -51,7 +49,7 @@ void Reset()
 	window->setWindowSize(windowSize.x * windowscale.x, windowSize.y * windowscale.y);
 }
 
-void Save_Config()
+inline void Save_Config()
 {
 	config["clearcolor"] = clearcolor.components;
 	config["windowscale"] = windowscale.components;
@@ -61,7 +59,7 @@ void Save_Config()
 	file << config;
 }
 
-void Load_Config() 
+inline void Load_Config() 
 {
 	if (fs::exists("config.json")) {
 		auto s = FileUtilities::read_file("config.json");
@@ -86,14 +84,14 @@ void Load_Config()
 	}
 }
 
-void Draw_Wallicia_Control(Window* ctrl)
+inline void Draw_Wallicia_Control(Window* ctrl)
 {
-	if (!open) {
+	if (!openControl) {
 		// Hide window
 		ctrl->hide();
-		open = true;
+		openControl = true;
 	} else {
-		if (!init) {
+		if (!initControl) {
 			window = WindowManager::GetCurrentWithContext();
 
 			windowSize = window->getWindowSize();
@@ -124,13 +122,13 @@ void Draw_Wallicia_Control(Window* ctrl)
 			Reset();
 			Load_Config(); 
 			
-			init = true;
+			initControl = true;
 		}
 
 		// Force ImGui window to fit real window
 		ImGui::SetNextWindowSize(ImVec2(ctrl->getWidth(), ctrl->getHeight()));
 		ImGui::SetNextWindowPos(ImVec2(0, 0));
-		ImGui::Begin("Wallicia Control", &open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+		ImGui::Begin("Wallicia Control", &openControl, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
 
 		// Just some basic info
 		ImGui::Text("Renderer:");
@@ -184,9 +182,13 @@ void Draw_Wallicia_Control(Window* ctrl)
 
 		ImGui::Separator();
 
+#ifdef _WIN32
 		// Win32 Console control
-		if (ImGui::Checkbox("Show Console", &showConsole))
-			Wallicia::HideConsole(!showConsole);
+		if (ImGui::Checkbox("Show Console", &showConsole)) {
+			const auto console = GetConsoleWindow();
+			ShowWindow(console, showConsole);
+		}
+#endif
 
 		// Window Top Most option
 		if (ImGui::Checkbox("Window Top Most", &windowTopMost)) {
@@ -263,7 +265,7 @@ void Draw_Wallicia_Control(Window* ctrl)
 		ImGui::Separator();
 
 		// Clear color option
-		if (ImGui::ColorEdit4("Clear Color", clearcolor.elements()))
+		if (ImGui::ColorEdit4("Clear Color", clearcolor.components.data()))
 			RendererManager::getRenderer()->setClearColor(clearcolor);
 
 		ImGui::Separator();
@@ -275,7 +277,7 @@ void Draw_Wallicia_Control(Window* ctrl)
 
 		// Window scale option
 		ImGui::Checkbox("Keep Aspect Ratio", &keepaspectratio);
-		if (ImGui::DragFloat2("Window Scale", windowscale.elements(), 0.01f, 0.1f, 1000.0f)) {
+		if (ImGui::DragFloat2("Window Scale", windowscale.components.data(), 0.01f, 0.1f, 1000.0f)) {
 			if (keepaspectratio) {
 				if (windowscale.x != oldWindowscale.x)
 					windowscale.y = windowscale.x;
@@ -289,17 +291,17 @@ void Draw_Wallicia_Control(Window* ctrl)
 
 		// Window pos options
 		if (windowFollowCursor) windowPosition = window->getPosition();
-		if (ImGui::DragFloat2("Window Position", windowPosition.elements()))
+		if (ImGui::DragFloat2("Window Position", windowPosition.components.data()))
 			window->setPosition(windowPosition);
 
 		ImGui::Checkbox("Have window follow cursor", &windowFollowCursor);
 		if (windowFollowCursor) {
 			ImGui::TextColored(ImVec4(1.0f, cos(Wallicia::getInstance()->getTime() * 1.25f), sin(Wallicia::getInstance()->getTime()), 1.0f), "Press ESC to release");
-#ifdef SE_OS_WINDOWS
+#ifdef _WIN32
 			if (GetKeyState(VK_ESCAPE) & 0x8000) // Normal window based input check doesn't work if focus shifts while window is being moved
 #endif
 				windowFollowCursor = false;
-#ifdef SE_OS_WINDOWS
+#ifdef _WIN32
 			POINT pp;
 			GetCursorPos(&pp);
 			pp.x -= window->getWidth() / 2;
