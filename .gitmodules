@@ -1,0 +1,3 @@
+[submodule "Submodules/singularity_engine"]
+	path = Submodules/singularity_engine
+	url = git@github.com:CaptainHorse/singularity_engine.git
